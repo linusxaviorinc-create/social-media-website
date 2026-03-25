@@ -1,0 +1,11 @@
+.DS_Store
+.venv/
+.playwright-browsers/
+__pycache__/
+*.pyc
+social/sessions/*.json
+social/logs/*.json
+social/inbox/*.json
+!social/inbox/.gitkeep
+!social/logs/.gitkeep
+!social/sessions/.gitkeep
