@@ -49,9 +49,9 @@ def parse_args() -> argparse.Namespace:
         help="Platform to open for login.",
     )
     parser.add_argument(
-        "--headless",
+        "--show-browser",
         action="store_true",
-        help="Run without a visible browser window. Usually keep this off for login.",
+        help="Show the browser window. Login normally needs this.",
     )
     return parser.parse_args()
 
@@ -79,7 +79,7 @@ def main() -> None:
     session_path = SESSIONS_DIR / platform["session_file"]
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=args.headless)
+        browser = playwright.chromium.launch(headless=not args.show_browser)
         context = browser.new_context()
         page = context.new_page()
         page.goto(platform["login_url"], wait_until="domcontentloaded")

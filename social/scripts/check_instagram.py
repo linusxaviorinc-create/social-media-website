@@ -52,9 +52,9 @@ NOISE_TOKENS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Capture Instagram activity into local files.")
     parser.add_argument(
-        "--headless",
+        "--show-browser",
         action="store_true",
-        help="Run without showing the browser window.",
+        help="Show the browser window while running.",
     )
     return parser.parse_args()
 
@@ -396,7 +396,7 @@ def main() -> None:
     inbox_shot = SCREENSHOT_DIR / f"instagram-dm-{timestamp}.png"
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=args.headless)
+        browser = playwright.chromium.launch(headless=not args.show_browser)
         context = browser.new_context(storage_state=str(session_path))
         page = context.new_page()
 

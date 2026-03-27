@@ -1,0 +1,9 @@
+[
+  {
+    "handle": "stonelevitation",
+    "category": "band_played_venue",
+    "policy": "trusted_auto_repost",
+    "require_approval_to_post": true,
+    "notes": "Played their first show at Giant Rock Meeting Room."
+  }
+]
