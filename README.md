@@ -132,6 +132,13 @@ source .venv/bin/activate
 python3 social/scripts/refresh_operator_artifacts.py
 ```
 
+Record a manual queue override after handling something directly in Instagram:
+
+```bash
+source .venv/bin/activate
+python3 social/scripts/record_instagram_operator_override.py --key "story_reshare::stonelevitation" --status done --action manual_story_shared --details "Story repost completed manually in Instagram." --note "Operator completed this in-app."
+```
+
 Create a repost-review manifest from the latest Instagram reshare check:
 
 ```bash
@@ -172,6 +179,7 @@ This writes:
 - `social/logs/instagram-operator-queue.json`: latest generated queue snapshot
 - `social/logs/instagram-operator-backlog.json`: latest known state per item
 - `social/logs/instagram-operator-history.json`: rolling history of queue updates
+- `social/logs/instagram-operator-overrides.json`: manual state corrections for items handled outside automation
 
 ## Content workflow
 
@@ -249,3 +257,23 @@ Suggested mobile pattern:
 1. Use Codex on desktop to refresh queue artifacts or draft content.
 2. Review repo changes or markdown workflow files from iPhone.
 3. Approve or request edits, then return to desktop only for browser-driven actions that need the local session.
+
+## Using this project from iPhone
+
+Best app split:
+
+- `ChatGPT`: ask Codex for planning, writing, repo edits, and workflow help
+- `GitHub`: read files, review commits, and check the current repo state
+
+What works well from iPhone:
+
+- reviewing `README.md`, voice docs, and templates
+- asking Codex to update copy, docs, or scripts
+- checking what changed in the repo
+- planning captions, approvals, and next steps
+
+What still needs the Mac:
+
+- Playwright and browser automation
+- Instagram login or session-dependent scripts
+- anything that depends on local files in `social/sessions/`, `social/logs/`, or `social/inbox/`
