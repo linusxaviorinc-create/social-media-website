@@ -15,6 +15,7 @@ social/content/staging/*.json
 social/content/archive/approved/*.md
 social/content/archive/drafts/*.md
 social/content/archive/staging/*.json
+social/assets/drive-flyers/*
 social/operator/*.json
 social/operator/*.md
 social/operator/cards/*.md
@@ -24,3 +25,4 @@ social/operator/cards/*.md
 !social/sessions/.gitkeep
 !social/operator/.gitkeep
 !social/assets/inbox-flyers/.gitkeep
+!social/assets/drive-flyers/.gitkeep

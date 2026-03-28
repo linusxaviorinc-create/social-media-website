@@ -109,6 +109,20 @@ script currently works fully with Gmail and will attempt calendar matching, but
 it records a graceful warning if Google Calendar API access is not enabled for
 the current `gog` project yet.
 
+Intake a flyer or event image from the local synced Google Drive mount and turn it into a draft plus staging manifest:
+
+```bash
+source .venv/bin/activate
+python3 social/scripts/intake_drive_flyer.py --draft
+```
+
+By default this scans recent files from the local `linus@giantrockmeetingroom.com`
+Google Drive Desktop mount, prioritizing:
+
+- `GRMR Mac Docs/Marketing&Graphics/INSTAGRAM FLYERS`
+- `GRMR Mac Docs/Marketing&Graphics/Flyers`
+- `GRMR Mac Docs/Events`
+
 Approve the latest content draft so it moves into the ready-to-post lane:
 
 ```bash
