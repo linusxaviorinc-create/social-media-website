@@ -97,6 +97,18 @@ source .venv/bin/activate
 python3 social/scripts/intake_latest_asset.py --context "Short notes about the asset"
 ```
 
+Find a likely flyer email in Gmail, download its attachments locally, and turn it into a draft plus staging manifest:
+
+```bash
+source .venv/bin/activate
+python3 social/scripts/intake_gmail_flyer.py --draft
+```
+
+Use `--message-id` if you already know the exact Gmail message to intake. The
+script currently works fully with Gmail and will attempt calendar matching, but
+it records a graceful warning if Google Calendar API access is not enabled for
+the current `gog` project yet.
+
 Approve the latest content draft so it moves into the ready-to-post lane:
 
 ```bash

@@ -3,6 +3,7 @@
 .playwright-browsers/
 __pycache__/
 *.pyc
+social/assets/inbox-flyers/*
 social/sessions/*.json
 social/logs/*.json
 social/inbox/*.json
@@ -22,3 +23,4 @@ social/operator/cards/*.md
 !social/logs/.gitkeep
 !social/sessions/.gitkeep
 !social/operator/.gitkeep
+!social/assets/inbox-flyers/.gitkeep
