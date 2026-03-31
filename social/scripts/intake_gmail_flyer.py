@@ -138,6 +138,8 @@ def gmail_get(account: str, message_id: str) -> dict[str, Any]:
         "--format full",
         "-j --results-only",
     )
+    if isinstance(payload, list) and payload:
+        payload = payload[0]
     if not isinstance(payload, dict):
         raise RuntimeError("Unexpected Gmail payload.")
     return payload
