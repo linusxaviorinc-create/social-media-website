@@ -1,0 +1,37 @@
+{
+  "_comment": "Copy to instagram-graph.json and fill in. The real file is gitignored. Never put a token in a file that is committed.",
+
+  "graph_api_version": "v25.0",
+  "instagram_user_id": "REPLACE_WITH_INSTAGRAM_BUSINESS_ACCOUNT_ID",
+  "facebook_page_id": "REPLACE_WITH_FACEBOOK_PAGE_ID",
+
+  "_token_note": "Preferred: export IG_GRAPH_ACCESS_TOKEN. Otherwise point access_token_file at a file OUTSIDE this repo.",
+  "access_token_file": "~/.config/grmr/instagram-graph-token",
+
+  "_app_note": "Only needed to exchange a short-lived token for a long-lived one.",
+  "app_id": "",
+  "app_secret": "",
+
+  "gcs": {
+    "_note": "Uploading and signing run through the gcloud CLI, so `gcloud auth login` must be done.",
+    "bucket": "REPLACE_WITH_PRIVATE_BUCKET_NAME",
+    "object_prefix": "instagram",
+    "region": "US",
+    "signed_url_ttl_seconds": 3600,
+    "expected_lifecycle_days": 7,
+    "project": null,
+    "gcloud_path": "gcloud",
+
+    "_signing_note": "Impersonation keeps no private key on disk and is the only option when the org enforces constraints/iam.disableServiceAccountKeyCreation. Grant yourself roles/iam.serviceAccountTokenCreator on this service account.",
+    "signing_mode": "auto",
+    "impersonate_service_account": "ig-publisher@YOUR_PROJECT.iam.gserviceaccount.com",
+    "service_account_key_file": null
+  },
+
+  "image": {
+    "fit": "pad",
+    "pad_color": "#ffffff",
+    "jpeg_quality": 90,
+    "max_width": 1440
+  }
+}

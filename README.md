@@ -19,11 +19,15 @@ structure.
 - `social/logs/`: action logs
 - `social/operator/`: rendered queue/progress artifacts for automation handoff
 - `social/scripts/`: automation scripts
+- `social/config/`: local publishing config (the filled-in file stays out of git)
 - `social/sessions/`: saved browser session state
 
 Shared logic:
 
 - `social/scripts/policy.py`: trusted-account and repost decision helpers
+- `social/scripts/instagram_graph_config.py`: config and Graph API request helpers
+- `social/scripts/image_prep.py`: flyer to Instagram-ready JPEG conversion
+- `social/scripts/gcs_upload.py`: private image hosting with short-lived signed URLs, via the gcloud CLI
 - `social/voice/reshare-rules.md`: repost policy
 - `social/voice/trusted-repost-accounts.json`: trusted account list
 
@@ -214,8 +218,9 @@ This writes:
 3. Review the markdown draft in `social/content/drafts/`.
 4. Review the staging manifest in `social/content/staging/`.
 5. Move the content into `social/content/approved/` with `approve_content_post.py` or `approve_staging_manifest.py`.
-6. Stage it in Instagram with `stage_instagram_post.py`.
-7. Only use `--share` when you want to publish publicly.
+6. Publish it with `publish_instagram_graph.py`, which uses Meta's official API.
+7. Only use `--publish` when you want the post to go public. Browser automation
+   (`stage_instagram_post.py`) stays available as a fallback.
 
 ## Queue runner
 
@@ -243,6 +248,187 @@ If Instagram’s post composer fails while staging a post, the workflow now writ
 - `social/logs/instagram-latest-post-stage-debug.json`
 
 That debug log includes the current page URL, visible actions, a body excerpt, and a screenshot path so the failure can be diagnosed quickly.
+
+## Publishing to Instagram (official Graph API)
+
+`publish_instagram_graph.py` is the supported way to post. It publishes to an
+Instagram professional account that is linked to a Facebook Page, using Meta's
+Content Publishing API. The Playwright scripts stay in place as a fallback for
+anything the API cannot do.
+
+The flow for one approved post:
+
+1. Validate the post: approved status, one asset, a caption within Instagram's limits.
+2. Convert the flyer to JPEG, the only format the API accepts.
+3. Upload it to a private Google Cloud Storage bucket.
+4. Hand Meta a signed URL that expires in about an hour.
+5. Create a media container and poll until Meta has fetched the image.
+6. Publish, then archive the post and record the media ID.
+
+### Why the image gets padded
+
+Instagram only accepts aspect ratios between 4:5 and 1.91:1, and it silently
+crops anything outside that range. A standard 8.5x11 flyer is about 0.77, just
+outside the limit, so Instagram would trim the top or bottom and cut off text.
+The default `--fit pad` adds white bars to bring the flyer into range instead,
+leaving every word intact. Use `--fit crop` only when you know the edges are
+safe to lose, or `--fit error` to refuse anything out of range.
+
+### One-time setup
+
+**1. Meta side.** In a Meta app with the Instagram Graph API product, grant
+`instagram_basic`, `instagram_content_publish`, and `pages_read_engagement`.
+Find the two IDs with:
+
+```bash
+curl -s "https://graph.facebook.com/v25.0/me/accounts?access_token=$IG_GRAPH_ACCESS_TOKEN"
+curl -s "https://graph.facebook.com/v25.0/PAGE_ID?fields=instagram_business_account&access_token=$IG_GRAPH_ACCESS_TOKEN"
+```
+
+**2. Private bucket with a 7-day backstop.** Signed URLs expire in an hour; the
+lifecycle rule makes sure nothing lingers even if a run fails partway:
+
+```bash
+gcloud storage buckets create gs://YOUR_BUCKET --location=us-west1 --uniform-bucket-level-access
+echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":7}}]}' > /tmp/lifecycle.json
+gcloud storage buckets update gs://YOUR_BUCKET --lifecycle-file=/tmp/lifecycle.json
+```
+
+Do not make the bucket public. `check_instagram_graph.py` warns if it is.
+
+**3. Credentials for signing.** Uploading and signing both run through the
+gcloud CLI, so it is a runtime requirement, not just a setup tool:
+
+```bash
+brew install --cask gcloud-cli
+```
+
+```bash
+gcloud auth login
+```
+
+A signed URL must be signed by a service account. Impersonating one keeps no
+private key on disk, which is also the only option when the organization
+enforces `constraints/iam.disableServiceAccountKeyCreation`. Check that with
+`gcloud resource-manager org-policies describe
+constraints/iam.disableServiceAccountKeyCreation --project=YOUR_PROJECT
+--effective` before assuming a key file is possible.
+
+```bash
+gcloud services enable iamcredentials.googleapis.com
+```
+
+```bash
+gcloud iam service-accounts create ig-publisher --display-name="Instagram publisher"
+```
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://YOUR_BUCKET --member=serviceAccount:ig-publisher@YOUR_PROJECT.iam.gserviceaccount.com --role=roles/storage.objectAdmin
+```
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding ig-publisher@YOUR_PROJECT.iam.gserviceaccount.com --member=user:YOUR_EMAIL --role=roles/iam.serviceAccountTokenCreator
+```
+
+The service account needs `objectAdmin` because a signed URL is authorized as
+whoever signed it: you upload as yourself, but Meta's fetch is checked against
+the service account's permissions.
+
+Then set `impersonate_service_account` in the config and leave
+`service_account_key_file` null. Also set `gcs.region` to the bucket's location
+(`US` for a multi-region bucket). The signer only holds object permissions, not
+`storage.buckets.get`, so it cannot auto-detect the region while impersonating.
+
+Application Default Credentials are deliberately not used. Some Workspace orgs
+do not allowlist the ADC OAuth client, which makes `gcloud auth
+application-default login` fail with a "scope is required but not consented"
+error even when `gcloud auth login` works. Going through the CLI sidesteps that
+entirely.
+
+**4. Config and token.** Copy the example and fill it in. The real config file
+is gitignored:
+
+```bash
+cp social/config/instagram-graph.example.json social/config/instagram-graph.json
+```
+
+Keep the access token out of the repository. Either export it:
+
+```bash
+export IG_GRAPH_ACCESS_TOKEN='your-long-lived-token'
+```
+
+or store it in a file outside the repo and point `access_token_file` at it:
+
+```bash
+mkdir -p ~/.config/grmr && chmod 700 ~/.config/grmr
+printf '%s' 'your-long-lived-token' > ~/.config/grmr/instagram-graph-token
+chmod 600 ~/.config/grmr/instagram-graph-token
+```
+
+A token from the Graph API Explorer lasts about an hour. Exchange it for a
+long-lived one (needs `app_id` and `app_secret` in the config):
+
+```bash
+python3 social/scripts/check_instagram_graph.py --exchange-token --output ~/.config/grmr/instagram-graph-token
+```
+
+### Check the setup
+
+```bash
+source .venv/bin/activate
+python3 social/scripts/check_instagram_graph.py --check-upload
+```
+
+This reports token validity, missing permissions, token expiry, the linked
+account, remaining publishing quota, and whether the bucket is private and has
+the 7-day rule. `--check-upload` round-trips a small test object through a
+signed URL and deletes it afterwards.
+
+### Publish a post
+
+Every run is a dry run unless `--publish` is passed. Being in the approved lane
+is never enough on its own. Walk it up one stage at a time:
+
+```bash
+python3 social/scripts/publish_instagram_graph.py
+```
+
+```bash
+python3 social/scripts/publish_instagram_graph.py --stage upload
+```
+
+```bash
+python3 social/scripts/publish_instagram_graph.py --stage container
+```
+
+```bash
+python3 social/scripts/publish_instagram_graph.py --publish
+```
+
+- default (no flags): converts the image and reports what it would do. No upload, no API calls.
+- `--stage upload`: also uploads and verifies the signed URL is fetchable.
+- `--stage container`: also creates the media container at Meta. Still not public. Meta discards an unpublished container after 24 hours.
+- `--publish`: publishes, archives the post to `social/content/posted/`, and records the media ID and permalink.
+
+Useful flags: `--post` to pick a specific file, `--caption` to override the
+caption, `--fit`/`--pad-color` for image handling, and `--force` to override the
+duplicate guard.
+
+### Safety behavior
+
+- Nothing publishes without `--publish`. There is no automatic path from approved to posted.
+- A post already in `social/content/posted/`, or whose image already appears in the publish ledger, is refused unless `--force` is passed.
+- The publishing quota is checked before posting.
+- If a run fails before publishing, the uploaded object is deleted. Pass `--keep-remote` to keep it for debugging.
+- Access tokens are never written to logs, and signed URLs are logged with the signature stripped.
+
+Written to `social/logs/` (all gitignored):
+
+- `instagram-graph-latest-run.json`: the most recent run at any stage
+- `instagram-graph-latest-error.json`: details of the most recent failure
+- `instagram-graph-publish-ledger.json`: every post published through the API
+- `instagram-graph-check.json`: the most recent setup check
 
 ## Initial operating model
 
