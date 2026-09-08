@@ -44,6 +44,7 @@ ERROR_LOG = LOGS_DIR / "instagram-graph-latest-error.json"
 LEDGER = LOGS_DIR / "instagram-graph-publish-ledger.json"
 
 CAPTION_MAX_CHARS = 2200
+MAX_COLLABORATORS = 3  # Meta's limit for feed images
 CAPTION_MAX_HASHTAGS = 30
 CAPTION_MAX_MENTIONS = 20
 
@@ -69,6 +70,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", help="Path to the Instagram Graph config file.")
     parser.add_argument("--caption", help="Override the caption from the post frontmatter.")
     parser.add_argument("--asset-index", type=int, default=0, help="Which asset to post when a draft has several.")
+    parser.add_argument(
+        "--collaborator",
+        action="append",
+        help="Instagram username to invite as a collaborator. Use up to 3 times. "
+             "Overrides the post's own collaborators list.",
+    )
     parser.add_argument("--fit", choices=image_prep.FIT_CHOICES, help="How to handle an out-of-range aspect ratio.")
     parser.add_argument("--pad-color", help="Padding color used when fit is 'pad'.")
     parser.add_argument("--quality", type=int, help="JPEG quality to start from.")
@@ -127,6 +134,26 @@ def validate_caption(caption: str) -> list[str]:
     return warnings
 
 
+def normalize_collaborators(raw: list[str] | None) -> list[str]:
+    """Clean up collaborator usernames and enforce Meta's limit of three.
+
+    Invited accounts must accept before the post appears on their profile, so a
+    wrong handle fails silently rather than erroring.
+    """
+    names: list[str] = []
+    for entry in raw or []:
+        for part in str(entry).replace(",", " ").split():
+            handle = part.strip().lstrip("@")
+            if handle and handle not in names:
+                names.append(handle)
+    if len(names) > MAX_COLLABORATORS:
+        raise SystemExit(
+            f"{len(names)} collaborators given, but Instagram allows at most "
+            f"{MAX_COLLABORATORS}: {', '.join(names)}"
+        )
+    return names
+
+
 def file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -181,11 +208,19 @@ def check_publishing_quota(config: Any) -> dict[str, Any]:
     }
 
 
-def create_container(config: Any, image_url: str, caption: str) -> str:
+def create_container(
+    config: Any,
+    image_url: str,
+    caption: str,
+    collaborators: list[str] | None = None,
+) -> str:
+    params: dict[str, Any] = {"image_url": image_url, "caption": caption}
+    if collaborators:
+        params["collaborators"] = json.dumps(collaborators)
     payload = graph_request(
         config,
         f"{config.instagram_user_id}/media",
-        {"image_url": image_url, "caption": caption},
+        params,
         method="POST",
     )
     container_id = payload.get("id")
@@ -284,6 +319,10 @@ def main() -> None:
         raise SystemExit(f"Post has no caption: {post_path}")
     warnings.extend(validate_caption(caption))
 
+    collaborators = normalize_collaborators(
+        args.collaborator if args.collaborator else frontmatter.get("collaborators")
+    )
+
     source_digest = file_digest(source_asset)
     prior = already_published(post_path, source_digest)
     if prior and not args.force:
@@ -302,6 +341,7 @@ def main() -> None:
         "caption_chars": len(caption),
         "instagram_user_id": config.instagram_user_id,
         "graph_api_version": config.api_version,
+        "collaborators": collaborators,
         "mode": "publish" if args.publish else f"dry-run:{args.stage}",
         "stage_reached": "prep",
         "published": False,
@@ -334,6 +374,8 @@ def main() -> None:
               f"{prepared['size_bytes'] / 1024:.0f} KB)")
         for action in prepared.get("actions") or []:
             print(f"  - {action}")
+        if collaborators:
+            print(f"Collabs: {', '.join('@' + c for c in collaborators)} (each must accept the invite)")
 
         if not args.publish and args.stage == "prep":
             record["next_step"] = "Re-run with --stage upload to test GCS hosting."
@@ -348,7 +390,11 @@ def main() -> None:
         record["bucket"] = bucket_report
         record["warnings"].extend(bucket_report.get("warnings") or [])
         if not bucket_report.get("exists"):
-            raise SystemExit(f"GCS bucket {config.gcs.bucket} is not usable. See warnings above.")
+            detail = "\n".join(f"  - {w}" for w in (bucket_report.get("warnings") or []))
+            raise SystemExit(
+                f"GCS bucket {config.gcs.bucket} is not usable.\n"
+                + (detail or "  - No detail returned.")
+            )
 
         object_name = gcs_upload.build_object_name(config.gcs.object_prefix, post_path.stem)
         upload = gcs_upload.upload_and_sign(config.gcs, Path(prepared["output"]), object_name)
@@ -381,7 +427,7 @@ def main() -> None:
                 print(f"Warning: {warning}")
             return
 
-        container_id = create_container(config, upload["signed_url"], caption)
+        container_id = create_container(config, upload["signed_url"], caption, collaborators)
         record["container_id"] = container_id
         status_payload = poll_container(config, container_id, args.poll_timeout, args.poll_interval)
         record["container_status"] = status_payload.get("status_code")
