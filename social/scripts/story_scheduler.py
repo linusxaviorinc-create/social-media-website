@@ -58,7 +58,7 @@ ANNEX_CONFIG = Path.home() / ".config" / "grmr" / "instagram-graph-annex.json"
 GMAIL_SEND_CONFIG = Path.home() / ".config" / "grmr" / "gmail-send.json"
 
 REQUIRED_FIELDS = ("show_id", "event_date", "ticket_link", "flyer_ref")
-DEFAULT_CADENCE_DAYS = 2
+DEFAULT_CADENCE_DAYS = 1  # daily, so a show's Story is up every day until it happens
 DEFAULT_TICKET_TEXT = "TICKETS IN BIO!!"
 FLYER_SUFFIXES = {"image/jpeg": ".jpg", "image/png": ".png"}
 
